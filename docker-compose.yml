@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: clickhouse
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    environment:
+      - CLICKHOUSE_USER=admin
+      - CLICKHOUSE_PASSWORD=admin
+    volumes:
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+      - clickhouse_data:/var/lib/clickhouse
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+
+  vector:
+    image: timberio/vector:latest-alpine
+    container_name: vector
+    ports:
+      - "8080:8080" # Expose Vector's HTTP server to your applications
+    volumes:
+      # Mount the configuration file we just created
+      - ./vector.yaml:/etc/vector/vector.yaml:ro
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      # Mount data sources
+      - ./grafana-init/datasources:/etc/grafana/provisioning/datasources
+      - ./grafana-init/dashboards:/etc/grafana/provisioning/dashboards
+    environment:
+      # This automatically installs the official ClickHouse plugin on startup!
+      - GF_INSTALL_PLUGINS=grafana-clickhouse-datasource
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    restart: unless-stopped
+volumes:
+  # Define the named volume for data persistence
+  clickhouse_data:

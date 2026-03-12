@@ -1,0 +1,71 @@
+# vector.yaml
+
+# ------------------------------------------------------------------------------
+# 1. SOURCES: Where Vector receives data
+# ------------------------------------------------------------------------------
+sources:
+  http_in:
+    type: "http_server"
+    address: "0.0.0.0:8080"
+    decoding:
+      codec: "json"
+    # By default, Vector will automatically parse incoming JSON payloads.
+
+# ------------------------------------------------------------------------------
+# 2. TRANSFORMS (Optional): Shape the data before it hits ClickHouse
+# ------------------------------------------------------------------------------
+# If your incoming JSON has a nested structure, you can use Vector Remap Language (VRL)
+# to flatten it to match your ClickHouse columns, or simply pass it through.
+
+transforms:
+  format_for_clickhouse_wds_events:
+    type: "remap"
+    inputs:
+      - "http_in"
+    source: |
+      . = .data.payload
+
+# ------------------------------------------------------------------------------
+# 3. SINKS: Where Vector sends the batched data
+# ------------------------------------------------------------------------------
+sinks:
+  debug_file:
+    type: file
+    inputs:
+      - "format_for_clickhouse_wds_events"
+    path: /tmp/vector-%Y-%m-%d.log
+    encoding:
+          codec: "raw_message"
+  debug_file_raw:
+    type: file
+    inputs:
+      - "http_in"
+    path: /tmp/vector-raw-%Y-%m-%d.log
+    encoding:
+          codec: "raw_message"
+  clickhouse_wds_events_sink:
+    type: "clickhouse"
+    inputs: 
+      - "format_for_clickhouse_wds_events"
+    # The endpoint uses the Docker network hostname "clickhouse"
+    endpoint: "http://clickhouse:8123"
+    database: "default" # The ClickHouse database we created earlier
+    table: "wds_events" # The ClickHouse table we created earlier
+    date_time_best_effort: true # Allows ClickHouse to parse various datetime formats without strict ISO8601 compliance
+    # Drops JSON keys that don't have matching columns in your ClickHouse table,
+    # preventing insert errors.
+    skip_unknown_fields: true 
+
+    # Authentication (leave blank if default ClickHouse setup has no password)
+    auth:
+      strategy: "basic"
+      user: "admin"
+      password: "admin"
+
+    # --------------------------------------------------------------------------
+    # BATCHING RULES: The magic that prevents ClickHouse "Too Many Parts" errors
+    # Vector flushes data to ClickHouse when EITHER of these thresholds is met.
+    # --------------------------------------------------------------------------
+    batch:
+      max_events: 10000     # Flush after accumulating 10,000 events...
+      timeout_secs: 5       # ...or flush every 5 seconds, whichever happens first.

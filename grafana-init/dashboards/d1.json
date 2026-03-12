@@ -1,0 +1,130 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "links": [],
+  "panels": [
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "PDEE91DDB90597936"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "footer": {
+              "reducers": []
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "channel_stats"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 223
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "cellHeight": "sm",
+        "showHeader": true
+      },
+      "pluginVersion": "12.4.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "PDEE91DDB90597936"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "meta": {
+            "builderOptions": {
+              "columns": [],
+              "database": "",
+              "limit": 1000,
+              "mode": "list",
+              "queryType": "table",
+              "table": ""
+            }
+          },
+          "pluginVersion": "4.14.0",
+          "queryType": "table",
+          "rawSql": "SELECT\n    workspace_sid,\n    task_queue_sid,\n\n    -- Queue-level aggregates: sum across all channels (rollup)\n    sum(pending_count) AS queue_pending_tasks,\n    sum(reserved_count) AS queue_reserved_tasks,\n    sum(assigned_count) AS queue_assigned_tasks,\n    sum(wrapping_count) AS queue_wrapping_tasks,\n    sum(waiting_count) AS queue_waiting_tasks,\n    sum(active_count) AS queue_active_tasks,\n    sum(pending_count + reserved_count + assigned_count + wrapping_count) AS queue_total_tasks,\n\n    -- Channel breakdown: collect channel stats into array\n    groupArray((\n        task_channel_sid,\n        pending_count,\n        reserved_count,\n        assigned_count,\n        wrapping_count,\n        waiting_count,\n        active_count\n    )) AS channel_stats,\n\n    -- Longest waiting task across all channels\n    COALESCE(argMax(longest_waiting_task_sid, longest_waiting_entered_date), '') AS longest_waiting_task_sid,\n    COALESCE(max(longest_waiting_entered_date), toDateTime('1970-01-01')) AS longest_waiting_task_from,\n\n    now() AS event_timestamp\n\nFROM (\n    -- Channel-level aggregation: aggregate tasks by channel\n    SELECT\n        workspace_sid,\n        task_queue_sid,\n        task_channel_sid,\n        countIf(latest_status = 'pending') AS pending_count,\n        countIf(latest_status = 'reserved') AS reserved_count,\n        countIf(latest_status = 'assigned') AS assigned_count,\n        countIf(latest_status = 'wrapping') AS wrapping_count,\n        countIf(latest_status IN ('pending', 'reserved')) AS waiting_count,\n        countIf(latest_status IN ('assigned', 'wrapping')) AS active_count,\n        argMaxIf(task_sid, task_queue_entered_date, latest_status IN ('pending', 'reserved')) AS longest_waiting_task_sid,\n        maxIf(task_queue_entered_date, latest_status IN ('pending', 'reserved')) AS longest_waiting_entered_date\n    FROM (\n        -- Task-level: get LATEST status per task (argMax fix)\n        SELECT\n            COALESCE(workspace_sid, '') AS workspace_sid,\n            COALESCE(task_queue_sid, '') AS task_queue_sid,\n            COALESCE(task_channel_sid, '') AS task_channel_sid,\n            task_sid,\n            argMax(task_assignment_status, timestamp) AS latest_status,\n            argMax(task_queue_entered_date, timestamp) AS task_queue_entered_date\n        FROM wds_events\n        WHERE workspace_sid != '' AND task_queue_sid != ''\n        GROUP BY workspace_sid, task_queue_sid, task_channel_sid, task_sid\n    )\n    GROUP BY workspace_sid, task_queue_sid, task_channel_sid\n)\nGROUP BY workspace_sid, task_queue_sid;",
+          "refId": "A"
+        }
+      ],
+      "title": "Queue Stats",
+      "type": "table"
+    }
+  ],
+  "preload": false,
+  "refresh": "5s",
+  "schemaVersion": 42,
+  "tags": [],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "New dashboard",
+  "uid": "ad9s24c",
+  "version": 2,
+  "weekStart": ""
+}

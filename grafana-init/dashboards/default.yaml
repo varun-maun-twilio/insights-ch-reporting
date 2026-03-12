@@ -1,0 +1,13 @@
+apiVersion: 1
+
+providers:
+  - name: 'Default Dashboards'
+    orgId: 1
+    folder: ''
+    folderUid: ''
+    type: file
+    disableDeletion: true # Prevents users from deleting this via the UI
+    updateIntervalSeconds: 10 # How often Grafana checks for JSON file updates
+    options:
+      # This path is inside the container, matching your docker-compose volume mount
+      path: /etc/grafana/provisioning/dashboards
